@@ -1,3 +1,10 @@
+# 수정
+다른 코드도 돌려보기 위해 libxml2 돌려볼 예정
+
+
+
+
+##### 여기부터는 원본
 # Prompt Fuzzing for Fuzz Driver Generation
 PromptFuzz is an automated tool that generates high-quality fuzz drivers for libraries via a fuzz loop constructed on mutating LLMs' prompts. The fuzz loop of PromptFuzz aims to guide the mutation of LLMs' prompts to generate programs that cover more reachable code and explore complex API interrelationships, which are effective for fuzzing.
 
