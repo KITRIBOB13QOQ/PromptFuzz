@@ -300,8 +300,8 @@ pub mod openai_billing {
     fn count_billing(model: &str, prompt_usage: u32, completion_usage: u32) -> Result<()> {
         let (prompt_price, completion_price) = match model {
             CHATGPT_MODEL => (CHATGPT_INPUTR_PRICE, CHATGPT_OUTPUT_PRICE),
-            CHATGPT_MODEL_LONG => (CHATGPT_LONG_INPUT_PRICE, CHATGPT_LONG_OUTPUT_PRICE),
-            GPT4_MODEL => (GPT4_INPUT_PRICE, GPT4_OUTPUT_PRICE),
+            // CHATGPT_MODEL_LONG => (CHATGPT_LONG_INPUT_PRICE, CHATGPT_LONG_OUTPUT_PRICE),
+            //GPT4_MODEL => (GPT4_INPUT_PRICE, GPT4_OUTPUT_PRICE),
             _ => unimplemented!("Model {model} is not supported!"),
         };
 
@@ -358,14 +358,16 @@ fn create_chat_request(
     let config = get_config();
     let tokens = count_request_token_len(&msgs);
     let mut binding = CreateChatCompletionRequestArgs::default();
-    let binding = if matches!(config.generative, LLMModel::GPT4) {
-        binding.model(config::GPT4_MODEL)
-    }
-    else if tokens < config::CHATGPT_CONTEXT_LIMIT {
-        binding.model(config::CHATGPT_MODEL)
-    } else {
-        binding.model(config::CHATGPT_MODEL_LONG)
-    };
+
+    // 기본 모델 설정
+    binding.model(config::CHATGPT_MODEL);
+
+    // 조건에 따라 binding 모델 설정
+    if matches!(config.generative, LLMModel::GPT4) {
+        binding.model(config::GPT4_MODEL);
+    } else if tokens < config::CHATGPT_CONTEXT_LIMIT {
+        binding.model(config::CHATGPT_MODEL);
+    } 
 
     let mut request = binding
         .messages(msgs)

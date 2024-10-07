@@ -619,7 +619,8 @@ impl Executor {
                 limit
             }
         } else {
-            60 * 60 * 24
+            //60 * 60 * 24
+            60 * 10
         };
         let should_minimize = if let Some(min) = min_corpus {
             min
