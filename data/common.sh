@@ -10,15 +10,11 @@ function blue_echo() {
 }
 
 function init() {
-    mkdir -p ../../output/build
     OUTPUT=$(realpath ../../output/build)
     LIB_BUILD=${OUTPUT}/${PROJECT_NAME}
-    rm -rf $LIB_BUILD
-    mkdir -p $LIB_BUILD
     SRC=${LIB_BUILD}/src
     WORK=${LIB_BUILD}/work
     OUT=${LIB_BUILD}/out
-    rm -rf $SRC
     mkdir -p $SRC
     rm -rf $WORK
     mkdir -p $WORK
@@ -33,7 +29,8 @@ function san_env() {
     unset CXXFLAGS
     export CC=clang
     export CXX=clang++
-    SANITIZER_FLAGS="-O2 -fsanitize=address,undefined -fsanitize-address-use-after-scope -g "
+
+    SANITIZER_FLAGS="-O2 -fsanitize=address,undefined -fsanitize-address-use-after-scope -g -fPIC"
     export CFLAGS="${CFLAGS:-} $SANITIZER_FLAGS"
     export CXXFLAGS="${CXXFLAGS:-} $SANITIZER_FLAGS"
 }
@@ -47,6 +44,8 @@ function libfuzzer_env() {
     blue_echo "set libfuzzer env"
     export CC=clang
     export CXX=clang++
+    export LDFLAGS="-shared"
+
 
     unset CFLAGS
     unset CXXFLAGS
@@ -71,7 +70,7 @@ function coverage_env() {
     blue_echo "set coverage env"
     export CC=clang
     export CXX=clang++
-    COVERAGE_FLAGS="-g -fsanitize=fuzzer-no-link -fno-sanitize=undefined -fprofile-instr-generate -fcoverage-mapping -Wl,--no-as-needed -Wl,-ldl -Wl,-lm -Wno-unused-command-line-argument -DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION "
+    COVERAGE_FLAGS="-g -fsanitize=fuzzer-no-link -fno-sanitize=undefined -fprofile-instr-generate -fcoverage-mapping -Wl,--no-as-needed -Wl,-ldl -Wl,-lm -Wno-unused-command-line-argument -DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION"
     export CFLAGS="${CFLAGS:-} $COVERAGE_FLAGS"
     export CXXFLAGS="${CXXFLAGS:-} $COVERAGE_FLAGS"
 }
@@ -87,7 +86,8 @@ function build_bc() {
     export CC=wllvm
     export CXX=wllvm++
     export CFLAGS="-g -O0 "
-    export CXXFLAGS="-g -O0 "
+    export CXXFLAGS="-g -O0"
+    export LDFLAGS="-shared"
     build_lib
     cd $WORK
     extract-bc -b $LIB_STORE_DIR/$STALIB_NAME
