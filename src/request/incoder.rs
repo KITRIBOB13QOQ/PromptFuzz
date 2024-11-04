@@ -1,17 +1,16 @@
 use super::Handler;
-use crate::config::get_library_name;
+//use crate::config::get_library_name;
 use crate::program::Program;
 use crate::request::format_server_url;
-use crate::{config, Deopt};
+//use crate::{config, Deopt};
 use eyre::Result;
 use once_cell::sync::OnceCell;
 use reqwest::{Client, ClientBuilder};
 use serde::{Deserialize, Serialize};
-use std::process::{Child, Command, Stdio};
+use crate::config;
 use std::time;
 
 pub struct IncoderHanlder {
-    child: Option<Child>,
     rt: tokio::runtime::Runtime,
 }
 
@@ -21,23 +20,17 @@ impl Default for IncoderHanlder {
             .enable_all()
             .build()
             .unwrap_or_else(|_| panic!("Unable to build the incoder runtime."));
-        Self {
-            child: Some(
-                rt.block_on(init_incoder_server())
-                    .unwrap_or_else(|_| panic!("Unable to start the incoder server!")),
-            ),
-            rt,
-        }
+        
+        rt.block_on(init_incoder_server())
+            .unwrap_or_else(|_| panic!("Unable to start the incoder server!"));
+        
+        Self { rt }
     }
 }
 
 impl IncoderHanlder {
-    fn stop_incoder_server(&mut self) -> Result<()> {
-        if let Some(child) = &mut self.child {
-            child.kill()?;
-            return Ok(());
-        }
-        eyre::bail!("The incoder server isn't running yet!")
+    fn stop_incoder_server(&self) -> Result<()> {
+        Ok(())
     }
 }
 
@@ -48,8 +41,8 @@ impl Drop for IncoderHanlder {
 }
 
 impl Handler for IncoderHanlder {
-    fn generate_by_str(&self, prefix: &str) -> eyre::Result<Vec<Program>> {
-        self.rt.block_on(generate_programs_by_prefix(prefix))
+    fn generate_by_str(&self, prefix: &str, suffix: &str) -> eyre::Result<Vec<Program>> {
+        self.rt.block_on(generate_programs_by_prefix(prefix, suffix))
     }
 
     fn infill_by_str(&self, prefix: &str, suffix: &str) -> eyre::Result<Vec<String>> {
@@ -63,27 +56,23 @@ impl Handler for IncoderHanlder {
     }
 }
 
-async fn init_incoder_server() -> Result<Child> {
-    let server_path = crate::Deopt::get_incoder_path()?;
-    if !server_path.exists() {
-        eyre::bail!("The script of incoder server doesn't exist!");
-    }
-    let deopt = Deopt::new(get_library_name())?;
-    let server_port = crate::config::LISTEN_PORT.to_string();
-    let child = Command::new("python3")
-        .arg(server_path)
-        .arg("--port")
-        .arg(server_port)
-        .arg("--log_file")
-        .arg(deopt.get_server_logger_path()?)
-        .stdout(Stdio::null())
-        .stderr(Stdio::inherit())
-        .spawn()
-        .expect("Fial to starat incoder server");
-    test_server_status().await?;
-    Ok(child)
-}
+async fn init_incoder_server() -> Result<()> {
+    let host = format_server_url();
+    let server_url = format!("{host}/health_check");
 
+    let client = reqwest::Client::new();
+    let response = client.get(&server_url).send().await;
+
+    match response {
+        Ok(res) if res.status().is_success() => {
+            println!("LLM 서버 {}", host);
+            Ok(())
+        }
+        _ => {
+            eyre::bail!("외부 LLM 실패 {host}");
+        }
+    }
+}
 /// Build the server client.
 fn build_client() -> Client {
     ClientBuilder::new()
@@ -102,7 +91,7 @@ fn get_client() -> Result<&'static Client> {
 }
 
 /// Send syn and check the server if is start.
-async fn send_syn() -> Result<()> {
+/*async fn send_syn() -> Result<()> {
     let client = get_client()?;
     let syn: usize = rand::random();
     let url = format_server_url() + "/syn?id=" + &syn.to_string();
@@ -116,9 +105,9 @@ async fn send_syn() -> Result<()> {
         eyre::bail!("Haven't receive a valid ack from server.");
     }
 }
-
+*/
 /// test the incoder server whether is started.
-async fn test_server_status() -> Result<()> {
+/*async fn test_server_status() -> Result<()> {
     for _ in 0..10 {
         if send_syn().await.is_ok() {
             log::info!("The server is start!");
@@ -129,7 +118,7 @@ async fn test_server_status() -> Result<()> {
         tokio::time::sleep(time::Duration::from_secs(10)).await;
     }
     eyre::bail!("The server could not start within 100 seconds, please check config.")
-}
+}*/
 
 #[derive(Debug, Builder, Serialize)]
 #[builder(name = "IncoderRequestBuilder")]
@@ -153,7 +142,7 @@ pub struct IncoderRequest {
     #[builder(default = "Some(0.95)")]
     pub top_p: Option<f64>,
     /// How many completions/insertions to generate for each request.
-    #[builder(default = "Some(1)")]
+    #[builder(default = "Some(5)")]
     pub n_samples: Option<usize>,
 }
 
@@ -165,7 +154,7 @@ impl Default for IncoderRequest {
             max_tokens: Some(2048),
             temperature: Some(0.0),
             top_p: Some(0.95),
-            n_samples: Some(1),
+            n_samples: Some(5),
         }
     }
 }
@@ -183,9 +172,10 @@ pub fn create_infill_request(prefix: &str, suffix: &str) -> Result<IncoderReques
 }
 
 /// Create completion request with the provided prefix.
-pub fn create_complete_request(prefix: &str) -> Result<IncoderRequest> {
+pub fn create_complete_request(prefix: &str, suffix: &str) -> Result<IncoderRequest> {
     let request = IncoderRequestBuilder::default()
         .prefix(prefix)
+        .suffix(suffix)
         .max_tokens(config::MAX_TOKENS)
         .temperature(config::get_config().temperature)
         .n_samples(config::get_sample_num())
@@ -198,7 +188,7 @@ pub async fn get_complete_response(request: &IncoderRequest) -> Result<IncoderRe
     let client = get_client()?;
     let url = format_server_url() + "/generate/";
     let request = client.post(url).json::<IncoderRequest>(request).build()?;
-    log::trace!(
+    log::debug!(
         "Send incoder request body: {:#?}",
         String::from_utf8(request.body().unwrap().as_bytes().unwrap().to_vec())
     );
@@ -213,12 +203,12 @@ pub async fn get_complete_response(request: &IncoderRequest) -> Result<IncoderRe
 }
 
 /// Generate programs by the given prompt string.
-pub async fn generate_programs_by_prefix(prefix: &str) -> Result<Vec<Program>> {
-    let request = create_complete_request(prefix)?;
+pub async fn generate_programs_by_prefix(prefix: &str, suffix: &str) -> Result<Vec<Program>> {
+    let request = create_complete_request(prefix, suffix)?;
     let response = get_complete_response(&request).await?;
     let mut programs = Vec::new();
     for choice in response.choices {
-        let program_str = prefix.to_owned() + &choice;
+        let program_str = &choice;
         let program = Program::new(&program_str);
         programs.push(program);
     }

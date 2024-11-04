@@ -39,7 +39,7 @@ impl Default for OpenAIHanler {
 }
 
 impl Handler for OpenAIHanler {
-    fn generate_by_str(&self, prefix: &str) -> eyre::Result<Vec<Program>> {
+    fn generate_by_str(&self, prefix: &str, _suffix: &str) -> eyre::Result<Vec<Program>> {
         self.rt.block_on(generate_programs_by_prefix(prefix))
     }
 
@@ -50,6 +50,10 @@ impl Handler for OpenAIHanler {
             config::LLMModel::ChatGPT | config::LLMModel::GPT4 => {
                 let start = std::time::Instant::now();
                 let chat_msgs = prompt.to_chatgpt_message();
+
+                // 로그에 chat_msgs를 출력 (Debug 트레이트가 구현되어 있는 경우)
+                log::info!("chat_msgs_front: {:?}", chat_msgs);
+
                 let mut programs = self.rt.block_on(generate_programs_by_chat(chat_msgs))?;
                 for program in programs.iter_mut() {
                     program.combination = prompt.get_combination()?;
@@ -72,6 +76,10 @@ impl Handler for OpenAIHanler {
             config::LLMModel::Codex => Handler::infill(self, prompt),
             config::LLMModel::ChatGPT | config::LLMModel::GPT4 => {
                 let chat_msgs = prompt.to_chatgpt_message();
+
+                // 로그에 chat_msgs를 출력 (Debug 트레이트가 구현되어 있는 경우)
+                log::info!("chat_msgs_back: {:?}", chat_msgs);
+
                 if let PromptKind::Infill(_, suffix) = &prompt.kind {
                     let stop = suffix[..10].to_string();
                     self.rt
@@ -85,10 +93,10 @@ impl Handler for OpenAIHanler {
     }
 
     fn stop(&mut self) -> eyre::Result<()> {
-        //log_account_balance(&self.rt)?;
         Ok(())
     }
 }
+
 
 
 fn get_openai_proxy() -> Option<String> {
