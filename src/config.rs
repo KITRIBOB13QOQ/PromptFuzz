@@ -8,24 +8,24 @@ pub const LISTEN_HOST: &str = "127.0.0.1";
 
 pub const LISTEN_PORT: i32 = 7860;
 
-pub const LISTEN_TIMEOUT: u64 = 100;
+pub const LISTEN_TIMEOUT: u64 = 10000;
 
 pub const CONNECT_TIMEOUT: u64 = 1;
 
 // OpenAI codex configure options
 pub const CODEX_MODEL: &str = "code-davinci-002";
 
-pub const CHATGPT_MODEL: &str = "gpt-4o-mini-2024-07-18";
+pub const CHATGPT_MODEL: &str = "gpt-3.5-turbo-0613";
 pub const CHATGPT_INPUTR_PRICE: f32 = 0.0015_f32;
 pub const CHATGPT_OUTPUT_PRICE: f32 = 0.002_f32;
 pub const CHATGPT_CONTEXT_LIMIT: usize = 4097;
 
-//pub const CHATGPT_MODEL_LONG: &str = "gpt-4o-mini-2024-07-18";
-//pub const CHATGPT_LONG_INPUT_PRICE: f32 = 0.003_f32;
-//pub const CHATGPT_LONG_OUTPUT_PRICE: f32 = 0.004_f32;
+pub const CHATGPT_MODEL_LONG: &str = "gpt-3.5-turbo-16k-0613";
+pub const CHATGPT_LONG_INPUT_PRICE: f32 = 0.003_f32;
+pub const CHATGPT_LONG_OUTPUT_PRICE: f32 = 0.004_f32;
 
 
-pub const GPT4_MODEL: &str = "gpt-4o-mini-2024-07-18";
+pub const GPT4_MODEL: &str = "gpt-4-0613";
 pub const GPT4_INPUT_PRICE: f32 = 0.03_f32;
 pub const GPT4_OUTPUT_PRICE: f32 = 0.06_f32;
 
@@ -38,9 +38,9 @@ pub const INCODER_MODEL: i32 = 0;
 // General model configure options.
 pub const MUTATE_LINE: usize = 3;
 
-pub const MAX_TOKENS: u16 = 2048_u16;
+pub const MAX_TOKENS: u16 = 4096_u16;
 
-pub const MAX_INST_TOKENS: u16 = 256_u16;
+pub const MAX_INST_TOKENS: u16 = 1024_u16;
 
 pub const MUTATE_SEED_ROUND: u8 = 0;
 
@@ -155,16 +155,16 @@ pub struct Config {
     /// The target project you decide to fuzz. Available: ["cJSON", "c-ares", "libvpx", "libaom", "libpng", "cre2", "curl", "lcms", "libjpeg-turbo", "libmagic", "libtiff", "sqlite3", "zlib", "libpcap"]
     pub target: String,
     /// Generative model to generate codes.
-    #[arg(short, long, default_value="chat-gpt")]
+    #[arg(short, long, default_value="incoder")]
     pub generative: LLMModel,
     /// Infilling model to infill the masked codes.
-    #[arg(short, long, default_value="chat-gpt")]
+    #[arg(short, long, default_value="incoder")]
     pub infill: LLMModel,
     /// Sample N outputs per LLM's request, max: 128
-    #[arg(short, long, default_value="10")]
+    #[arg(short, long, default_value="5")]
     pub n_sample: u8,
     /// Sampling temperature. Higher values means the model will take more risks. Try 0.9 for more creative applications, and 0 (argmax sampling) for ones with a well-defined answer.
-    #[arg(short, long, default_value="0.9")]
+    #[arg(short, long, default_value="0.7")]
     pub temperature: f32,
     /// whether use the power schedule to mutate prompt. true for purly random mutation of prompt.
     #[arg(short, long, default_value="false")]
@@ -198,10 +198,10 @@ impl Config {
     pub fn init_test(target: &str) {
         let config = Config {
             target: target.to_string(),
-            generative: LLMModel::ChatGPT,
-            infill: LLMModel::ChatGPT,
-            n_sample: 10,
-            temperature: 0.9,
+            generative: LLMModel::Incoder,
+            infill: LLMModel::Incoder,
+            n_sample: 5,
+            temperature: 0.7,
             cores: 10,
             max_cores: 0,
             fuzz_round_succ: 1,
@@ -304,16 +304,19 @@ Here are the custom types declared in {project}. Ensure that the variables you u
 
 /// Template of infill prompt in user role.
 pub const USER_GEN_TEMPLATE: &str = 
-"Create a C++ language program step by step by using {project} library APIs and following the instructions below:
-1. Here are several APIs in {project}. Specific an event that those APIs could achieve together, if the input is a byte stream of {project}' output data.
-{combinations};
-2. Complete the LLVMFuzzerTestOneInput function to achieve this event by using those APIs. Each API should be called at least once, if possible.
-3. The input data and its size are passed as parameters of LLVMFuzzerTestOneInput: `const uint8_t *data` and `size_t size`. They must be consumed by the {project} APIs.
-4. Once you need a `FILE *` variable to read the input data, using `FILE * in_file = fmemopen((void *)data, size, \"rb\")` to produce a `FILE *` variable.
-   Once you need a `FILE *` variable to write output data, using `FILE * out_file = fopen(\"output_file\", \"wb\")` to produce a `FILE *` variable.
-5. Once you need a `int` type file descriptor, using `fileno(in_file)` or `fileno(out_file)` to produce a file descriptor for reading or writing. 
-6. Once you just need a string of file name, directly using \"input_file\" or \"output_file\" as the file name.
-7. Release all allocated resources before return.
+"Create a C++ language program step by step by using library APIs and following the instructions below:
+1. Here are several APIs. Specific an event that those APIs could achieve together, if the input is a byte stream of  output data.
+{combination}
+
+2. Complete the extern \"C\" int LLVMFuzzerTestOneInput function to achieve this event by using those APIs. Each API should be called at least once, if possible.
+3. The input data and its size are passed as parameters of LLVMFuzzerTestOneInput: `const uint8_t *data` and `size_t size`. They must be consumed by the APIs.
+4. The prototype of fuzz dirver is: `extern \"C\" int LLVMFuzzerTestOneInput(const uint8_t data, size_t size).
+5. Include the necessary header file,  this header must always be included in the generated code: #include \"FDSan.h\"\n#include <stdlib.h>\n#include <string.h>\n#include <stdint.h>\n#include <vector>\n#include <fstream>\n#include <iostream>\n#include <sstream>
+6. Do not redefine APIs or custom types exported from {project}
+6. Once you need a `FILE *` variable to read the input data, using `FILE * in_file = fmemopen((void *)data, size, \"rb\")` to produce a `FILE *` variable.\n   Once you need a `FILE *` variable to write output data, using `FILE * out_file = fopen(\"output_file\", \"wb\")` to produce a `FILE *` variable.
+7. Once you need a `Sint` type file descriptor, using `fileno(in_file)` or `fileno(out_file)` to produce a file descriptor for reading or writing. 
+8. Once you just need a string of file name, directly using \"input_file\" or \"output_file\" as the file name.
+9. Release all allocated resources before return.
 ";
 
 

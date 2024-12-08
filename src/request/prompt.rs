@@ -170,14 +170,22 @@ impl Prompt {
     }
 
     /// format to completion kind prompt. return with (Prefix, Option<Suffix>).
-    pub fn to_completion_prompt(&self) -> (String, Option<String>) {
+    pub fn to_completion_prompt(&self) -> (String, String) {
         match &self.kind {
-            PromptKind::Generate(combination) => (
-                config::get_complete_gen_tempate()
-                    .replace("{combination}", &combination_to_str(combination)),
-                None,
-            ),
-            PromptKind::Infill(prefix, suffix) => (prefix.clone(), Some(suffix.clone())),
+            PromptKind::Generate(combination) => {
+                // Generate의 경우 user_msg와 system_msg의 구성을 나눔
+                let user_msg = config::get_user_chat_template()
+                    .replace("{combinations}", &combination_to_str(combination));
+                let ctx = get_combination_definitions(combination);
+                let sys_msg = get_sys_gen_message(ctx);
+                (user_msg, sys_msg)
+            },
+            PromptKind::Infill(prefix, suffix) => {
+                // Infill의 경우는 기존과 같이 구성
+                let user_msg = prefix.clone();
+                let sys_msg = suffix.clone();
+                (user_msg, sys_msg)
+            },
             PromptKind::Others => unreachable!("Codex prompt cannot be Others kind."),
         }
     }
